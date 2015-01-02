@@ -1,0 +1,70 @@
+#!/bin/bash
+# piratezpdx - George Nicol - 12/20/2013
+# one of my first bash scripts
+#
+# (algorithm)
+# - for a server
+#   - get the data
+#     - sort, cull
+# >?    CPU (pcpu) +80% - 1.00 or greater
+# >?    MEM (    ) +
+# >?    PPID == 1 - 5th field (suspect)
+# >?    no controlling tty - 13th field == ? or ??
+#     - write data to log file including machine name
+# - print log file location to screen
+#
+# UPDATES --------------
+# 12/27/2013 circulates through servers grabbing ps and uptime
+# 12/30/2013 have set awk to evaluate root rather than grep
+# future editions should look there
+# - consider assigning fields to variables, then weighting each
+# variable based on its value. Sum the weights to determine
+# likelyhood that the process is a runaway.
+# couldn't get the more complex awk portion to run right.
+# may need a separate function call?
+
+
+# constants and other initialization
+
+thedate=`date +%b_%d_%Y__%H_%M`                         # grab the date so we can make it
+logfile=~/Documents/cat/logfiles/runaway/r_$thedate.lg  # part of the log file name
+tempfile=~/Documents/cat/logfiles/runaway/tempfile.lg   # temp housing of data - left on purpose
+count=0                                                 # counts number of machines
+# use ps only - skip top/htop
+
+
+# outer loop that specifies each netgrouplist to be examined
+for list in "cs-secure-sys" "ece-secure-sys" "linux-login-sys"; do        # add "linux-login-sys" after successful test
+  echo "Starting $list"                                                   # marker for progress
+
+  # mid loop that specifies each machine within a list to be examined
+  for machine in `netgrouplist $list`; do
+    echo $machine >> $logfile                 # put the machinename in the logfile
+    count=$[$count +1 ]                       # keep count of number of machines
+    ssh $machine uptime > $tempfile           # get the uptime
+    awk '$10 > 10.0 || $11 > 10.0 || $12 > 10.0' $tempfile >> $logfile
+
+# get the processes
+# grab all processes and give me the following: user name & ID, %mem use,
+#               %cpu & time usage, elapsed time, niceness and the command
+#                   *these are compatible unix/linux*
+
+    ssh $machine ps -eo user,uid,pmem,vsz,pcpu,time,etime,nice,ppid,pid,args    \
+                     > $tempfile
+
+# then throw out all processes that are root/daemon and also the header
+# any mempry over 1.5%, swap over 1MB, or cpu over 5% is noted
+
+    awk '($1 !~/USER/) && ($3 > 1.5 || $4 > 1000000 || $5 > 5.0)' $tempfile >> $logfile
+
+  done  # machine list (mid-loop)
+done    # netgrouplist (outer loop)
+
+echo "Runaway check completed."
+if [ $count != `cat $logfile | wc -l` ]; then # if the number of machines is the same as
+  echo "There were some concerns."            # the number of lines in the file - no concerns
+else
+  echo "There appeared to be no issues."
+fi
+echo "Detailed results can be found at: $logfile"
+
