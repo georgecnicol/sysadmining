@@ -6,7 +6,7 @@
 # This script will take an nmap scan text file of the following format:
 #
 #Nmap 6.47 scan initiated Tue May 19 07:09:05 2015 as: nmap -v -n -T4 --version-light -p 1-65535 -oA xxx.xxx.xx.x_TCP xxx.xxx.xx.x
-#Nmap scan report for 192.168.21.6
+#Nmap scan report for xxx.xxx.xx.x
 #Host is up (0.0010s latency).
 #Not shown: 65517 closed ports
 #PORT      STATE SERVICE
