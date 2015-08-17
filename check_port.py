@@ -15,7 +15,7 @@ class BadArgs(Exception):
     return repr(self.value)
 
 def usage():
-  print("usage: {0} -i <ip address[-ending_quartet]> -p <port>".format(sys.argv[0]))
+  print("usage: {0} -a <ip address[-ending_quartet]> -p <port>".format(sys.argv[0]))
   sys.exit(1)
 
 def connect(ipAddress,port,outputFile):
