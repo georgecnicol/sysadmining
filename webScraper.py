@@ -85,7 +85,7 @@ def scrape(address, baseURL):
       elif link.startswith("/"):
         wholeLink.append(baseURL+link)
     except:
-      print("issue")
+      pass
 #    elif link.startswith("../"):
 #    # this should work but needs testing
 #    address=args.URL[0].split("/")
