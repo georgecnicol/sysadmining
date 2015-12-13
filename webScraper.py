@@ -38,7 +38,7 @@
 # OTHER THAN LAWFUL RESEARCH.
 
 # TODO
-# need to figure out how to follow re-directs...
+# need to follow re-directs...
 
 
 
@@ -68,21 +68,24 @@ def usage():
     sys.exit(1)
 
 
-def scrape(address, coreElement):
+def scrape(address, baseURL):
   print("Processing {0}".format(address))
   wholeLink=[]
   html=urllib.request.urlopen(address, None, 3).read().decode('utf-8')
   links = re.findall("a href=\"(\S+)\"", html)
   for link in links:
-     # not html files - try block will handle
-    #if link.endswith("pdf"):
-    #  pass
-    if re.findall(args.URL[0], link):
-      wholeLink.append(link)
-    elif link.startswith("//"):
-      pass
-    elif link.startswith("/"):
-      wholeLink.append(args.URL[0]+link)
+    try:
+      # not html files - try block will handle
+      # if link.endswith("pdf"):
+      # pass
+      if re.findall(baseURL, link):
+        wholeLink.append(link)
+      elif link.startswith("//"):
+        pass
+      elif link.startswith("/"):
+        wholeLink.append(baseURL+link)
+    except:
+      print("issue")
 #    elif link.startswith("../"):
 #    # this should work but needs testing
 #    address=args.URL[0].split("/")
@@ -102,76 +105,80 @@ def scrape(address, coreElement):
 # parse dem args
 # URL=sys.argv[1]
 
-parser = argparse.ArgumentParser(
-      description="Scrape a domain for emails, user names and phone numbers ...",
-      epilog="... because sometimes we need to know that stuff")
+def run():
+  parser = argparse.ArgumentParser(
+        description="Scrape a domain for emails, user names and phone numbers ...",
+        epilog="... because sometimes we need to know that stuff")
 
-parser.add_argument('-u', dest='URL', action='store', nargs=1, required=True, help="ip or URL")
-args, unknown = parser.parse_known_args()
-
-
-# format the domain or ip into what we need.
-try:
-  args.URL[0]=args.URL[0].strip() # not realy needed but maybe someone cut and paste and put in quotes
-                                  # other than that: garbage in, garbage out.
-  if not args.URL[0].startswith("http://") and not args.URL[0].startswith("https://"):
-    args.URL[0]="http://"+args.URL[0]
-# in retrospect I don't think there is a reason to have this?
-#  if not args.URL[0].endswith("/"):
-#    args.URL[0]+='/'
+  parser.add_argument('-u', dest='URL', action='store', nargs=1, required=True, help="ip or URL")
+  args, unknown = parser.parse_known_args()
 
 
-except Ooops as e:
-  print("{0}".format(e.value))
-  usage()
-
-# this is the domain/ip/directory that will be scraped. This is used to ensure the
-# tool only goes down - not out or across to an external site - from here.
-if args.URL[0].startswith("https://"):
-  coreElement=args.URL[0][8:]
-else:
-  coreElement=args.URL[0][7:]
-activeLinks.append(args.URL[0])
-
-while len(activeLinks) != 0:
+  # format the domain or ip into what we need.
   try:
-    current=activeLinks[0]
-    if len(re.findall(coreElement, current)) == 0:
-      activeLinks.remove(current)
-    elif current in visitedLinks:
-      activeLinks.remove(current)
-    else:
-      visitedLinks.append(current)
-      activeLinks.remove(current)
-      temp=scrape(current, coreElement)
-      for item in temp[0]:
-        if item not in visitedLinks:
-          activeLinks.append(item)
-      for item in temp[1]:
-        if item not in emailsHarvested:
-          emailsHarvested.append(item)
-      for item in temp[2]:  # this needs more wotk, we don't necessarily want a bunch of valid phone numbers with no
-                            # related contact information
-        if item not in phonesHarvested:
-          phonesHarvested.append(item)
-  except KeyboardInterrupt as e:
-    print("")
-    sys.exit(0)
+    args.URL[0]=args.URL[0].strip() # not realy needed but maybe someone cut and paste and put in quotes
+                                    # other than that: garbage in, garbage out.
+    if not args.URL[0].startswith("http://") and not args.URL[0].startswith("https://"):
+      args.URL[0]="http://"+args.URL[0]
+  # in retrospect I don't think there is a reason to have this?
+  #  if not args.URL[0].endswith("/"):
+  #    args.URL[0]+='/'
 
-  except:
-    pass
 
-if len(phonesHarvested) > 0:
-  print("\n\nphone numbers found")
-  for u in phonesHarvested:
-    print(u)
-if len(emailsHarvested) > 0:
-  print("\n\nemails: ")
-  for u in emailsHarvested:
-    print(u)
-  print("\n\npossible user account names:")
-  for u in emailsHarvested:
-    u=u.split("@")[0]
-    print(u)
+  except Ooops as e:
+    print("{0}".format(e.value))
+    usage()
 
+  # this is the domain/ip/directory that will be scraped. This is used to ensure the
+  # tool only goes down - not out or across to an external site - from here.
+  if args.URL[0].startswith("https://"):
+    coreElement=args.URL[0][8:]
+  else:
+    coreElement=args.URL[0][7:]
+  activeLinks.append(args.URL[0])
+
+  while len(activeLinks) != 0:
+    try:
+      current=activeLinks[0]
+      if len(re.findall(coreElement, current)) == 0:
+        activeLinks.remove(current)
+      elif current in visitedLinks:
+        activeLinks.remove(current)
+      else:
+        visitedLinks.append(current)
+        activeLinks.remove(current)
+        temp=scrape(current, args.URL[0])
+        for item in temp[0]:
+          if item not in visitedLinks:
+            activeLinks.append(item)
+        for item in temp[1]:
+          if item not in emailsHarvested:
+            emailsHarvested.append(item)
+        for item in temp[2]:  # this needs more wotk, we don't necessarily want a bunch of valid phone numbers with no
+                              # related contact information
+          if item not in phonesHarvested:
+            phonesHarvested.append(item)
+    except KeyboardInterrupt as e:
+      print("")
+      sys.exit(0)
+
+    except:
+      pass
+
+  if len(phonesHarvested) > 0:
+    print("\n\nphone numbers found")
+    for u in phonesHarvested:
+      print(u)
+  if len(emailsHarvested) > 0:
+    print("\n\nemails: ")
+    for u in emailsHarvested:
+      print(u)
+    print("\n\npossible user account names:")
+    for u in emailsHarvested:
+      u=u.split("@")[0]
+      print(u)
+
+
+if __name__ == '__main__':
+  run()
 
