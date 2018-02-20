@@ -1,0 +1,122 @@
+# George Nicol
+# February 2018
+# Run this on a cron job. It will hit bitmain devices API to get status, from the status a determination
+# is made whether a machine is performing adequately. If the machine is not performing in a desirable fashion
+# then send me a text and reboot the machine. As we all know, turning a machine off and then back on again
+# solves problems all too often.
+# Don't forget that you have to set up ssh keys for the bitmain stuff
+# More on troubleshooting (and more work can be added here) at
+# https://support.bitmain.com/hc/en-us/articles/220872007-Possible-problems-for-Antminer-Troubleshooting-for-S7-S9-L3-
+
+
+# ---------------------------------------------------------------------
+# Some constants
+# while we don't need to separate it may come in handy at some point
+
+l3devices = ['xx']
+s9devices = ['xx']
+baseIP    = 'xxx.xxx.xxx.'
+devices   = l3devices+s9devices
+api_port = 4028   # for bitmain devices
+
+
+
+# ---------------------------------------------------------------------
+# ssh to bitmain device to reboot it
+
+def bitmain_exec(bitmainIPs):
+  user='xxx'
+  cmd = '/sbin/shutdown -r now'
+  k = paramiko.RSAKey.from_private_key_file("/path/to/.ssh/id_rsa")
+  for IP in bitmainIPs:
+    client = paramiko.SSHClient()
+    client.load_system_host_keys()
+    client.connect(IP, username=user, pkey=k)
+    ssh_stdin, ssh_stdout, ssh_stderr = client.exec_command(cmd)
+    client.close()
+
+
+
+# ---------------------------------------------------------------------
+# Use Twilio
+# reference: https://www.twilio.com/docs/api/messaging/send-messages
+
+def send_sms(message_body):
+  user = "xxxxxx"
+  key = "xxxxx"
+  twilionum = "+11234567890"
+  my_number = "+10987654321"
+  data   = [my_number, message_body, twilionum]
+  client = Client(user, key)
+  message = client.messages.create(data[0], body=data[1], from_=data[2])
+
+
+
+
+# ---------------------------------------------------------------------
+# receive socket data - receiving status from bitmain devices
+
+def linesplit(socket):
+  buffer = socket.recv(4096)
+  done = False
+  while not done:
+    more = socket.recv(4096)
+    if not more:
+      done = True
+    else:
+      buffer = buffer+more
+  if buffer:
+    return buffer
+
+
+
+# ---------------------------------------------------------------------
+# socket connection - checking bitmain devices for status
+# return a list of devices that need to be rebooted
+
+def make_connection():
+  setofbaddevices=set()
+  for device in devices:
+    api_ip = baseIP+device
+    # there's all kinds of commands you can run, in this example I
+    # am just looking at the stats
+    # ["summary", "lcd", "stats"]
+    for command in ["stats"]:
+      try:
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect((api_ip,int(api_port)))
+        s.send(json.dumps({"command":command}))
+        response = linesplit(s)
+        response = response.replace('\x00','')  # there is some bad formatting in bitmain response
+        response = response.replace('}{','},{') # there is some bad formatting in bitmain response
+        s.close()
+        for badness in ['xxxxxxxx','--------']:  # things we don't want to see
+          if badness in response:
+            setofbaddevices.add(api_ip)
+
+      except socket.error as exc:
+        #print("{0}".format(exc))
+        pass
+
+  return setofbaddevices
+
+
+# ---------------------------------------------------------------------
+# Once we have the machines that aren't working as expected, we
+# can notify on them.
+
+def notify(problems):
+  for machine in problems:
+    devtype="S9"
+    if machine[-2:] in l3devices:
+      devtype="L3"
+    message = "{0} device at {1} has major fault in asic".format(devtype,machine)
+    send_sms(message)
+
+
+
+
+if __name__ == "__main__":
+  troublemakers = make_connection()
+  bitmain_exec(troublemakers)
+  notify(troublemakers)
