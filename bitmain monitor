@@ -1,5 +1,6 @@
 # George Nicol
 # February 2018
+# python
 # Run this on a cron job. It will hit bitmain devices API to get status, from the status a determination
 # is made whether a machine is performing adequately. If the machine is not performing in a desirable fashion
 # then send me a text and reboot the machine. As we all know, turning a machine off and then back on again
