@@ -25,7 +25,7 @@ api_port = 4028   # for bitmain devices
 # ---------------------------------------------------------------------
 # ssh to bitmain device to reboot it
 
-def bitmain_exec(bitmainIPs):
+def bitmain_reboot(bitmainIPs):
   user='xxx'
   cmd = '/sbin/shutdown -r now'
   k = paramiko.RSAKey.from_private_key_file("/path/to/.ssh/id_rsa")
@@ -106,7 +106,7 @@ def make_connection():
 # Once we have the machines that aren't working as expected, we
 # can notify on them.
 
-def notify(problems):
+def notify_me_about(problems):
   for machine in problems:
     devtype="S9"
     if machine[-2:] in l3devices:
@@ -119,5 +119,5 @@ def notify(problems):
 
 if __name__ == "__main__":
   troublemakers = make_connection()
-  bitmain_exec(troublemakers)
-  notify(troublemakers)
+  bitmain_reboot(troublemakers)
+  notify_me_about(troublemakers)
