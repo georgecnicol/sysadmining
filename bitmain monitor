@@ -1,13 +1,26 @@
 # George Nicol
-# February 2018
-# python
-# Run this on a cron job. It will hit bitmain devices API to get status, from the status a determination
-# is made whether a machine is performing adequately. If the machine is not performing in a desirable fashion
-# then send me a text and reboot the machine. As we all know, turning a machine off and then back on again
-# solves problems all too often.
+# March 2018
+# See use conditions and copyright info at bottom
+# This can be run on a cron job. It will hit bitmain devices API to get status, from the status a determination
+# is made whether a machine is performing adequately.
+# Also checks whether the pool (btc.com and litecoin.org) believes the machine is active or not.
+# If the machine is having asic difficulties or considered inactive then send me a text. Reboot the machine if
+# it having Asic difficultie.
+
+# As we all know, turning a machine off and then back on againsolves problems all too often.
 # Don't forget that you have to set up ssh keys for the bitmain stuff
-# More on troubleshooting (and more work can be added here) at
-# https://support.bitmain.com/hc/en-us/articles/220872007-Possible-problems-for-Antminer-Troubleshooting-for-S7-S9-L3-
+
+
+
+import paramiko
+import socket
+import json
+import sys
+import requests
+
+from twilio.rest import Client
+
+
 
 
 # ---------------------------------------------------------------------
@@ -20,12 +33,70 @@ baseIP    = 'xxx.xxx.xxx.'
 devices   = l3devices+s9devices
 api_port = 4028   # for bitmain devices
 
+# this api key gives status for all litecoin workers
+# these are read only
+lite_api = 'https://www.litecoinpool.org/api?api_key=xxx'
+
+# these api give only status for a single bitcoin worker
+# you have to 'allow a watcher' prior to setting this up
+# the watcher will give you the access key
+# from there you can use 'inspect' in your browser to determine interesting api endpoints
+# these are read only
+
+btc_worker1 = 'https://us-pool.api.btc.com/v1/worker/xxx?access_key=xxx&lang=en'
+#btc_worker2 = '...etc
+btc_apis= [ btc_worker1 ]
+
+# this is useful for mapping ip to common name that you have given worker
+# and so on xx1 is the last quartet of the IP for the machine in question
+devicemap={'xx1':'worker.name1','xx2':'worker.name2'} 
 
 
-# ---------------------------------------------------------------------
+# --------------------------------------------------------------------
+# get worker status from btc.com
+
+def btcstatus(apistocall):
+  bad_workers=''
+  for api in apistocall:
+    btcresponse = requests.get(api)
+    if str(btcresponse.status_code) != '200':
+      pass
+    elif btcresponse.text is not None:
+      btcresult=json.loads(btcresponse.text)
+      if btcresult["data"]["data"]["worker_status"] != "ACTIVE":
+        bad_workers+="subaccountxxxx"+btcresult['data']['data']['worker_name']+' '
+    else:
+      pass
+
+  return bad_workers
+
+
+
+# --------------------------------------------------------------------
+# get worker status from litecoin.org
+
+
+def litecoinstatus(api):
+  bad_workers=''
+  literesponse = requests.get(api)
+  if str(literesponse.status_code) != '200':
+    pass
+  elif literesponse.text is not None:
+    literesult=json.loads(literesponse.text)
+    for worker in literesult['workers'].keys():
+      if literesult['workers'][worker]['connected'] != True:
+        bad_workers+=worker+' '
+  else:
+    pass
+
+  return bad_workers
+
+
+
+# --------------------------------------------------------------------
 # ssh to bitmain device to reboot it
 
-def bitmain_reboot(bitmainIPs):
+def bitmain_exec(bitmainIPs):
   user='xxx'
   cmd = '/sbin/shutdown -r now'
   k = paramiko.RSAKey.from_private_key_file("/path/to/.ssh/id_rsa")
@@ -43,13 +114,14 @@ def bitmain_reboot(bitmainIPs):
 # reference: https://www.twilio.com/docs/api/messaging/send-messages
 
 def send_sms(message_body):
-  user = "xxxxxx"
-  key = "xxxxx"
+  user = "xxxx"
+  key = "xxxx"
   twilionum = "+11234567890"
   my_number = "+10987654321"
   data   = [my_number, message_body, twilionum]
   client = Client(user, key)
-  message = client.messages.create(data[0], body=data[1], from_=data[2])
+  if message_body != '':
+    client.messages.create(data[0], body=data[1], from_=data[2])
 
 
 
@@ -74,6 +146,8 @@ def linesplit(socket):
 # ---------------------------------------------------------------------
 # socket connection - checking bitmain devices for status
 # return a list of devices that need to be rebooted
+# using set because there was an opportunity in response
+# to have multiple occurences of the same device get added based on response
 
 def make_connection():
   setofbaddevices=set()
@@ -103,21 +177,59 @@ def make_connection():
 
 
 # ---------------------------------------------------------------------
-# Once we have the machines that aren't working as expected, we
-# can notify on them.
+# create a message based on asic faults and perceived status by pool
+# we want to keep the message length at zero if there is nothing to say
+# that way we dont have to send a text if there is nothing to say
 
-def notify_me_about(problems):
-  for machine in problems:
-    devtype="S9"
-    if machine[-2:] in l3devices:
-      devtype="L3"
-    message = "{0} device at {1} has major fault in asic".format(devtype,machine)
-    send_sms(message)
+def create_message(dev_map, set_of_problems, litecoinapi, btcapis):
+  # first bit of message is based on pool perception
+  message = ''
+  message += litecoinstatus(litecoinapi)
+  message += btcstatus(btcapis)
+  if message != '':
+    message += "Inactive workers: "+message
+
+  # second bit of message based on asic conditions
+  if len(set_of_problems) != 0:
+    message+='Attempting to reboot device(s) '
+    for machine in set_of_problems:
+      worker = dev_map[machine[-2:]]  # we just want the last quartet here for mapping purposes
+      message += "{0} ".format(worker )
+    message += "due to excessive asic faults."
+
+  return message
 
 
+#-----------------------------------------------------------------------
 
 
 if __name__ == "__main__":
   troublemakers = make_connection()
-  bitmain_reboot(troublemakers)
-  notify_me_about(troublemakers)
+  bitmain_exec(troublemakers)
+  send_sms(create_message(devicemap,troublemakers,lite_api,btc_apis))
+
+
+
+#Copyright (c) 2014-2018 George Nicol
+#All rights reserved.
+#
+#Redistribution and use in source and binary forms, with or without modification, are
+#permitted provided that the following conditions are met:
+#
+#   1. Redistributions of source code must retain the above copyright notice, this list of
+#      conditions and the following disclaimer.
+#
+#   2. Redistributions in binary form must reproduce the above copyright notice, this list
+#      of conditions and the following disclaimer in the documentation and/or other materials
+#      provided with the distribution.
+#
+#THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+#EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+#MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+#COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+#EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+#SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+#HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+#TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+#SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. USE THIS SOFTWARE ONLY
+#FOR LEGAL PURPOSES AND AT YOUR OWN RISK. BETTER YET, DON'T USE IT AT ALL.
