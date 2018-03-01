@@ -1,4 +1,4 @@
-Copyright (c) 2014-2015 George Nicol
+Copyright (c) 2014-2018 George Nicol
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are
